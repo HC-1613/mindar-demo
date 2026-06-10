@@ -26,6 +26,7 @@
         <a-entity mindar-image-target="targetIndex: 0">
             <a-gltf-model
                 src="library.glb"
+                smooth-follow
                 position="0 0 -0.05"
                 rotation="90 0 0"
                 scale="0.005 0.005 0.005">
@@ -36,6 +37,7 @@
         <a-entity mindar-image-target="targetIndex: 1">
             <a-gltf-model
                 src="head-green.glb"
+                smooth-follow
                 position="0 0 0"
                 scale="0.1 0.1 0.1">
             </a-gltf-model>
@@ -45,6 +47,7 @@
         <a-entity mindar-image-target="targetIndex: 2">
             <a-gltf-model
                 src="box.glb"
+                smooth-follow
                 position="0 0 0"
                 scale="0.1 0.1 0.1">
             </a-gltf-model>
@@ -54,11 +57,37 @@
         <a-entity mindar-image-target="targetIndex: 3">
             <a-gltf-model
                 src="ball.glb"
+                smooth-follow
                 position="0 0 0"
                 scale="0.1 0.1 0.1">
             </a-gltf-model>
         </a-entity>
 
     </a-scene>
+
+    <script>
+    AFRAME.registerComponent('smooth-follow', {
+        init: function () {
+            this.lerpFactor = 0.2;
+
+            this.lastPos = new THREE.Vector3();
+            this.currentPos = new THREE.Vector3();
+        },
+
+        tick: function () {
+            let obj = this.el.object3D;
+
+            // 当前 AR 计算位置
+            this.currentPos.copy(obj.position);
+
+            // 平滑
+            this.lastPos.lerp(this.currentPos, this.lerpFactor);
+
+            // 写回
+            obj.position.copy(this.lastPos);
+        }
+    });
+    </script>
+
 </body>
 </html>
