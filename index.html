@@ -95,7 +95,7 @@
 </head>
 
 <body>
-    <div id="hint">☝ 单指旋转视角 / 双指缩放</div>
+    <div id="hint">单指旋转视角 / 双指缩放</div>
     <div id="status"></div>
     <div id="info-label"></div>
     <div id="anim-label"></div>
@@ -467,21 +467,58 @@
             _applyScreenRotation(dx, dy) {
                 const st = this.activeModel;
                 if (!st) return;
-                const sensitivity = CONST.SWIPE_SENSITIVITY * (Math.PI / 180);
+                
+                // 直接使用局部坐标系的轴进行旋转
                 const rot = st.rotation;
-                const quat = new THREE.Quaternion().setFromEuler(
-                    new THREE.Euler(rot.x*Math.PI/180, rot.y*Math.PI/180, rot.z*Math.PI/180, 'YXZ')
-                );
+                const sensitivity = CONST.SWIPE_SENSITIVITY * (Math.PI / 180) * 100;
+                
+                // 获取模型的世界矩阵
+                const obj3D = st.el.object3D;
+                const worldMatrix = obj3D.matrixWorld.clone();
+                
+                // 提取局部坐标轴在世界空间中的方向
+                const localX = new THREE.Vector3(1, 0, 0).applyMatrix4(worldMatrix).sub(
+                    new THREE.Vector3().setFromMatrixPosition(worldMatrix)
+                ).normalize();
+                const localY = new THREE.Vector3(0, 1, 0).applyMatrix4(worldMatrix).sub(
+                    new THREE.Vector3().setFromMatrixPosition(worldMatrix)
+                ).normalize();
+                const localZ = new THREE.Vector3(0, 0, 1).applyMatrix4(worldMatrix).sub(
+                    new THREE.Vector3().setFromMatrixPosition(worldMatrix)
+                ).normalize();
+                
+                // 获取相机的屏幕坐标轴
                 const cam = this.sceneEl.camera;
                 const camQuat = new THREE.Quaternion();
                 cam.matrixWorld.decompose(new THREE.Vector3(), camQuat, new THREE.Vector3());
-                const screenUp = new THREE.Vector3(0,1,0).applyQuaternion(camQuat).normalize();
-                const screenRight = new THREE.Vector3(1,0,0).applyQuaternion(camQuat).normalize();
-                const qY = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx*sensitivity);
-                const qX = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy*sensitivity);
-                quat.premultiply(qY).premultiply(qX);
-                const newEuler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
-                st.setRotation(newEuler.x*180/Math.PI, newEuler.y*180/Math.PI, newEuler.z*180/Math.PI);
+                
+                const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat).normalize();
+                const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat).normalize();
+                
+                // 将屏幕的水平和垂直移动分别映射到模型的局部坐标轴上
+                const rotX = new THREE.Quaternion();
+                const rotY = new THREE.Quaternion();
+                const rotZ = new THREE.Quaternion();
+                
+                // 水平移动映射到Y轴（最自然的旋转）
+                const yContribution = -dx * sensitivity * 0.01;
+                // 垂直移动映射到X轴
+                const xContribution = -dy * sensitivity * 0.01;
+                
+                rotY.setFromAxisAngle(localY, yContribution);
+                rotX.setFromAxisAngle(localX, xContribution);
+                
+                // 构建最终的旋转
+                const currentQuat = obj3D.quaternion.clone();
+                currentQuat.premultiply(rotY).premultiply(rotX);
+                
+                // 转换为欧拉角并设置
+                const newEuler = new THREE.Euler().setFromQuaternion(currentQuat, 'YXZ');
+                st.setRotation(
+                    newEuler.x * 180 / Math.PI,
+                    newEuler.y * 180 / Math.PI,
+                    newEuler.z * 180 / Math.PI
+                );
             }
 
             _onWheel(e) {
