@@ -202,9 +202,9 @@
         // ---------- smooth-ar ----------
         AFRAME.registerComponent('smooth-ar', {
             schema: {
-                posFactor: { default: 0.25 },
-                rotFactor: { default: 0.35 },
-                minDelta: { default: 0.0005 }
+                posFactor: { default: 0.12 },
+                rotFactor: { default: 0.15 },
+                minDelta: { default: 0.001 }
             },
             init() {
                 this.smoothedPos = new THREE.Vector3();
