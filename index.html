@@ -55,6 +55,15 @@
         }
         #toast.visible { opacity: 1; }
 
+        /* 动画名称提示 */
+        #anim-label {
+            position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%);
+            color: #ff9800; font-family: system-ui, sans-serif; font-size: 12px; font-weight: bold;
+            pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 100;
+            text-shadow: 0 0 6px rgba(0,0,0,0.8);
+        }
+        #anim-label.visible { opacity: 1; }
+
         #toolbar {
             position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 100;
             display: flex; flex-direction: column; align-items: center;
@@ -94,6 +103,7 @@
     <div id="hint">☝ 单指旋转视角 / 双指缩放</div>
     <div id="status"></div>
     <div id="info-label"></div>
+    <div id="anim-label"></div>
     <div id="toast"></div>
 
     <div id="toolbar">
@@ -135,13 +145,13 @@
             <a-gltf-model id="model-2" data-info="📦 盒子模型" src="box.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
-        <!-- 动画模型不设置 animation-mixer，由代码手动接管 -->
         <a-entity mindar-image-target="targetIndex: 3" smooth-ar="posFactor: 0.2; rotFactor: 0.3; minDelta: 0.0003">
-            <a-gltf-model id="model-3" data-info="💀 动画模型" src="player.glb"
+            <a-gltf-model id="model-3" data-info="💀 动画模型" src="dying.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
+        <!-- 图片5: player.glb 多动画模型 -->
         <a-entity mindar-image-target="targetIndex: 4" smooth-ar="posFactor: 0.2; rotFactor: 0.3; minDelta: 0.0003">
-            <a-gltf-model id="model-4" data-info="💀 动画模型" src="player.glb"
+            <a-gltf-model id="model-4" data-info="🎮 玩家模型" src="player.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
     </a-scene>
@@ -157,7 +167,11 @@
             AUTO_ROT_SPEED: { x: 0.3, y: 0.6, z: 0.2 },
             INFO_DURATION: 2000,
             TOAST_DURATION: 1800,
+            ANIM_LABEL_DURATION: 1500,
             FALLBACK_DELTA_CAP: 0.1,
+            // player.glb 动画循环配置
+            PLAYER_ANIM_SEQUENCE: ['idle', 'walk', 'run', 'die'],
+            PLAYER_LOOP_ANIMS: new Set(['idle', 'walk', 'run']), // die 只播一次
             VIBRATE: {
                 CLICK: 10,
                 ANIM_START: 20,
@@ -170,11 +184,20 @@
 
         let toastTimer;
         const toastEl = document.getElementById('toast');
+        const animLabelEl = document.getElementById('anim-label');
         const showToast = (msg) => {
             clearTimeout(toastTimer);
             toastEl.textContent = msg;
             toastEl.classList.add('visible');
             toastTimer = setTimeout(() => toastEl.classList.remove('visible'), CONST.TOAST_DURATION);
+        };
+
+        let animLabelTimer;
+        const showAnimLabel = (msg) => {
+            clearTimeout(animLabelTimer);
+            animLabelEl.textContent = msg;
+            animLabelEl.classList.add('visible');
+            animLabelTimer = setTimeout(() => animLabelEl.classList.remove('visible'), CONST.ANIM_LABEL_DURATION);
         };
 
         // ---------- smooth-ar 组件 ----------
@@ -237,11 +260,13 @@
                 this.animId = null;
                 this.autoRotId = null;
                 this._infoTimer = null;
-                // 动画相关
+                // 动画
                 this.mixer = null;
                 this.animations = [];
+                this.animNames = [];
                 this.fbTicking = false;
-                this.animPlayed = false;
+                // player 状态机
+                this.playerAnimIdx = 0;
             }
             get scale() { const s = this.el.getAttribute('scale'); return { x: s.x, y: s.y, z: s.z }; }
             get rotation() { const r = this.el.getAttribute('rotation'); return { x: r.x, y: r.y, z: r.z }; }
@@ -254,12 +279,12 @@
             cancelAnim() { if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; } }
             cancelAutoRot() { if (this.autoRotId) { cancelAnimationFrame(this.autoRotId); this.autoRotId = null; } }
 
-            // 模型加载完成后初始化动画混合器（不自动播放）
             initAnimation() {
                 const obj = this.el.getObject3D('mesh');
                 if (!obj || !obj.animations || !obj.animations.length) return;
                 this.mixer = new THREE.AnimationMixer(obj);
                 this.animations = obj.animations;
+                this.animNames = obj.animations.map(c => c.name);
                 this.fbTicking = true;
                 let last = performance.now();
                 const tick = () => {
@@ -273,16 +298,19 @@
             }
 
             stopAnimation() {
-                if (this.mixer) {
-                    this.mixer.stopAllAction();
-                }
-                this.animPlayed = false;
+                if (this.mixer) this.mixer.stopAllAction();
+                this.playerAnimIdx = 0;
             }
 
             reset() {
                 this.cancelAnim();
                 this.cancelAutoRot();
                 this.stopAnimation();
+                // 重置后默认播放 idle（如果有的话）
+                this.playerAnimIdx = 0;
+                if (this.animNames.includes('idle')) {
+                    this._playClipByName('idle', true);
+                }
                 this.setScale(this.origScale.x, this.origScale.y, this.origScale.z);
                 this.setRotation(this.origRot.x, this.origRot.y, this.origRot.z);
             }
@@ -291,10 +319,10 @@
                 return this.animations.length > 0;
             }
 
-            playAnimation() {
+            // 通用：播放所有动画（用于非player模型）
+            playAllAnimations() {
                 if (!this.mixer || !this.animations.length) return false;
                 this.mixer.stopAllAction();
-                this.animPlayed = true;
                 this.animations.forEach(clip => {
                     const act = this.mixer.clipAction(clip);
                     act.reset();
@@ -303,6 +331,79 @@
                     act.play();
                 });
                 return true;
+            }
+
+            // 判断是否是 player 模型（有 idle/walk/run/die）
+            _isPlayerModel() {
+                return this.animNames.includes('idle') &&
+                       this.animNames.includes('walk') &&
+                       this.animNames.includes('run') &&
+                       this.animNames.includes('die');
+            }
+
+            // 通用入口：根据模型类型选择播放策略
+            playAnimation() {
+                if (!this.mixer || !this.animations.length) return false;
+                if (this._isPlayerModel()) {
+                    return this._playPlayerStep();
+                }
+                return this.playAllAnimations();
+            }
+
+            // player 状态机：idle → walk → run → die → idle → ...
+            _playPlayerStep() {
+                const seq = CONST.PLAYER_ANIM_SEQUENCE;
+                const idx = this.playerAnimIdx % seq.length;
+                const name = seq[idx];
+                const loop = CONST.PLAYER_LOOP_ANIMS.has(name);
+                const success = this._playClipByName(name, loop);
+                if (success) {
+                    showAnimLabel(`🎬 ${name}`);
+                    this.playerAnimIdx++;
+                    // 如果播的是 die（只播一次），播完后自动切回 idle
+                    if (name === 'die') {
+                        this._onDieFinished(() => {
+                            this._playClipByName('idle', true);
+                            this.playerAnimIdx = 0;
+                            showAnimLabel('🎬 idle');
+                        });
+                    }
+                }
+                return success;
+            }
+
+            _playClipByName(name, loop) {
+                if (!this.mixer) return false;
+                const clip = this.animations.find(c => c.name === name);
+                if (!clip) return false;
+                this.mixer.stopAllAction();
+                const act = this.mixer.clipAction(clip);
+                act.reset();
+                if (loop) {
+                    act.setLoop(THREE.LoopRepeat);
+                    act.clampWhenFinished = false;
+                } else {
+                    act.setLoop(THREE.LoopOnce);
+                    act.clampWhenFinished = true;
+                }
+                act.play();
+                return true;
+            }
+
+            // die 播放完毕回调
+            _onDieFinished(callback) {
+                const check = () => {
+                    const clip = this.animations.find(c => c.name === 'die');
+                    if (!clip) return;
+                    const act = this.mixer.clipAction(clip);
+                    if (act && act.isRunning()) {
+                        requestAnimationFrame(check);
+                    } else {
+                        callback();
+                    }
+                };
+                // 延迟一帧等 action 启动
+                requestAnimationFrame(() => requestAnimationFrame(check));
             }
         }
 
@@ -329,7 +430,6 @@
                     if (!el) continue;
                     const st = new ModelState(i, el);
                     this.models.set(i, st);
-                    // 模型加载完成后初始化动画（不播放）
                     el.addEventListener('model-loaded', () => {
                         st.initAnimation();
                     });
@@ -353,6 +453,7 @@
                             this.activeIdx = -1;
                             this.statusEl.textContent = '';
                             this.labelEl.classList.remove('visible');
+                            animLabelEl.classList.remove('visible');
                         }
                     });
                 }
@@ -360,7 +461,6 @@
                 this.sceneEl.canvas.addEventListener('wheel', e => this._onWheel(e), { passive: false });
             }
 
-            // ---------- 手势 ----------
             _bindGestures() {
                 const c = this.sceneEl.canvas;
                 c.addEventListener('touchstart', (e) => {
@@ -417,25 +517,18 @@
                 const st = this.activeModel;
                 if (!st) return;
                 const sensitivity = CONST.SWIPE_SENSITIVITY * (Math.PI / 180);
-
                 const rot = st.rotation;
                 const quat = new THREE.Quaternion().setFromEuler(
                     new THREE.Euler(rot.x * Math.PI/180, rot.y * Math.PI/180, rot.z * Math.PI/180, 'YXZ')
                 );
-
                 const cam = this.sceneEl.camera;
                 const camQuat = new THREE.Quaternion();
                 cam.matrixWorld.decompose(new THREE.Vector3(), camQuat, new THREE.Vector3());
-
                 const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat).normalize();
                 const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat).normalize();
-
-                // 左右滑(dx) → 绕屏幕Y轴(screenUp)，上下滑(dy) → 绕屏幕X轴(screenRight)
                 const qY = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * sensitivity);
                 const qX = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * sensitivity);
-
                 quat.premultiply(qY).premultiply(qX);
-
                 const newEuler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
                 st.setRotation(
                     newEuler.x * 180 / Math.PI,
@@ -453,7 +546,6 @@
                 this.activeModel.setScale(s.x * f, s.y * f, s.z * f);
             }
 
-            // ---------- 功能 ----------
             scaleStep(factor) {
                 const st = this.activeModel;
                 if (!st) return;
@@ -523,7 +615,6 @@
                 }
             }
 
-            // ---------- UI 绑定 ----------
             _bindButtons() {
                 const bind = (id, fn) => {
                     const el = document.getElementById(id);
