@@ -135,13 +135,14 @@
             <a-gltf-model id="model-2" data-info="📦 盒子模型" src="box.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
+        <!-- 动画模型不设置 animation-mixer，由代码手动接管 -->
         <a-entity mindar-image-target="targetIndex: 3" smooth-ar="posFactor: 0.2; rotFactor: 0.3; minDelta: 0.0003">
             <a-gltf-model id="model-3" data-info="💀 动画模型" src="dying.glb"
-                position="0 0 0" scale="0.1 0.1 0.1" animation-mixer="loop: once"></a-gltf-model>
+                position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
         <a-entity mindar-image-target="targetIndex: 4" smooth-ar="posFactor: 0.2; rotFactor: 0.3; minDelta: 0.0003">
             <a-gltf-model id="model-4" data-info="💀 动画模型" src="dying.glb"
-                position="0 0 0" scale="0.1 0.1 0.1" animation-mixer="loop: once"></a-gltf-model>
+                position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
     </a-scene>
 
@@ -235,9 +236,12 @@
                 this.visible = false;
                 this.animId = null;
                 this.autoRotId = null;
-                this.fallbackMixer = null;
-                this.fbTicking = false;
                 this._infoTimer = null;
+                // 动画相关
+                this.mixer = null;
+                this.animations = [];
+                this.fbTicking = false;
+                this.animPlayed = false;
             }
             get scale() { const s = this.el.getAttribute('scale'); return { x: s.x, y: s.y, z: s.z }; }
             get rotation() { const r = this.el.getAttribute('rotation'); return { x: r.x, y: r.y, z: r.z }; }
@@ -249,23 +253,30 @@
             }
             cancelAnim() { if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; } }
             cancelAutoRot() { if (this.autoRotId) { cancelAnimationFrame(this.autoRotId); this.autoRotId = null; } }
-            cancelFallbackTicking() { this.fbTicking = false; }
+
+            // 模型加载完成后初始化动画混合器（不自动播放）
+            initAnimation() {
+                const obj = this.el.getObject3D('mesh');
+                if (!obj || !obj.animations || !obj.animations.length) return;
+                this.mixer = new THREE.AnimationMixer(obj);
+                this.animations = obj.animations;
+                this.fbTicking = true;
+                let last = performance.now();
+                const tick = () => {
+                    if (!this.mixer || !this.fbTicking) return;
+                    const now = performance.now();
+                    this.mixer.update(Math.min((now - last)/1000, CONST.FALLBACK_DELTA_CAP));
+                    last = now;
+                    requestAnimationFrame(tick);
+                };
+                tick();
+            }
 
             stopAnimation() {
-                const mixComp = this.el.components['animation-mixer'];
-                if (mixComp && mixComp.mixer) {
-                    mixComp.mixer.stopAllAction();
-                    if (mixComp.animations) {
-                        mixComp.animations.forEach(clip => {
-                            const act = mixComp.mixer.clipAction(clip);
-                            act.stop();
-                            act.time = clip.duration;
-                        });
-                    }
+                if (this.mixer) {
+                    this.mixer.stopAllAction();
                 }
-                if (this.fallbackMixer) {
-                    this.fallbackMixer.stopAllAction();
-                }
+                this.animPlayed = false;
             }
 
             reset() {
@@ -277,43 +288,15 @@
             }
 
             hasAnimation() {
-                const mixComp = this.el.components['animation-mixer'];
-                if (mixComp && mixComp.mixer && mixComp.animations?.length) return true;
-                const obj = this.el.getObject3D('mesh');
-                return !!(obj && obj.animations?.length);
+                return this.animations.length > 0;
             }
 
             playAnimation() {
-                const mixComp = this.el.components['animation-mixer'];
-                if (mixComp && mixComp.mixer && mixComp.animations?.length) {
-                    mixComp.mixer.stopAllAction();
-                    mixComp.animations.forEach(clip => {
-                        const act = mixComp.mixer.clipAction(clip);
-                        act.reset();
-                        act.setLoop(THREE.LoopOnce);
-                        act.clampWhenFinished = true;
-                        act.play();
-                    });
-                    return true;
-                }
-                const obj = this.el.getObject3D('mesh');
-                if (!obj?.animations?.length) return false;
-                if (!this.fallbackMixer) {
-                    this.fallbackMixer = new THREE.AnimationMixer(obj);
-                    this.fbTicking = true;
-                    let last = performance.now();
-                    const tick = () => {
-                        if (!this.fallbackMixer || !this.fbTicking) return;
-                        const now = performance.now();
-                        this.fallbackMixer.update(Math.min((now - last)/1000, CONST.FALLBACK_DELTA_CAP));
-                        last = now;
-                        requestAnimationFrame(tick);
-                    };
-                    tick();
-                }
-                this.fallbackMixer.stopAllAction();
-                obj.animations.forEach(clip => {
-                    const act = this.fallbackMixer.clipAction(clip);
+                if (!this.mixer || !this.animations.length) return false;
+                this.mixer.stopAllAction();
+                this.animPlayed = true;
+                this.animations.forEach(clip => {
+                    const act = this.mixer.clipAction(clip);
                     act.reset();
                     act.setLoop(THREE.LoopOnce);
                     act.clampWhenFinished = true;
@@ -343,7 +326,13 @@
             _onSceneLoaded() {
                 for (let i = 0; i < CONST.MODEL_COUNT; i++) {
                     const el = document.getElementById('model-' + i);
-                    if (el) this.models.set(i, new ModelState(i, el));
+                    if (!el) continue;
+                    const st = new ModelState(i, el);
+                    this.models.set(i, st);
+                    // 模型加载完成后初始化动画（不播放）
+                    el.addEventListener('model-loaded', () => {
+                        st.initAnimation();
+                    });
                 }
                 for (let i = 0; i < CONST.MODEL_COUNT; i++) {
                     const target = document.querySelector(`[mindar-image-target="targetIndex: ${i}"]`);
@@ -359,7 +348,7 @@
                         const st = this.models.get(i);
                         if (!st) return;
                         st.visible = false;
-                        st.cancelFallbackTicking();
+                        st.cancelFallbackTicking?.();
                         if (this.activeIdx === i) {
                             this.activeIdx = -1;
                             this.statusEl.textContent = '';
@@ -424,7 +413,6 @@
                 return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
             }
 
-            // 左右滑=绕屏幕X轴（上下翻转），上下滑=绕屏幕Y轴（左右旋转）
             _applyScreenRotation(dx, dy) {
                 const st = this.activeModel;
                 if (!st) return;
@@ -442,12 +430,11 @@
                 const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat).normalize();
                 const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat).normalize();
 
-                // 左右滑(dx) → 绕屏幕X轴(screenRight)
-                const qX = new THREE.Quaternion().setFromAxisAngle(screenRight, -dx * sensitivity);
-                // 上下滑(dy) → 绕屏幕Y轴(screenUp)
-                const qY = new THREE.Quaternion().setFromAxisAngle(screenUp, -dy * sensitivity);
+                // 左右滑(dx) → 绕屏幕Y轴(screenUp)，上下滑(dy) → 绕屏幕X轴(screenRight)
+                const qY = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * sensitivity);
+                const qX = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * sensitivity);
 
-                quat.premultiply(qX).premultiply(qY);
+                quat.premultiply(qY).premultiply(qX);
 
                 const newEuler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
                 st.setRotation(
