@@ -282,11 +282,24 @@
                 this.playerAnimIdx = 0;
             }
 
-            reset() {
+            hasAnimation() { return this.animations.length > 0; }
 
+            playAllAnimations() {
+                if (!this.mixer || !this.animations.length) return false;
+                this.mixer.stopAllAction();
+                this.animations.forEach(clip => {
+                    const act = this.mixer.clipAction(clip);
+                    act.reset();
+                    act.setLoop(THREE.LoopOnce);
+                    act.clampWhenFinished = true;
+                    act.play();
+                });
+                return true;
+            }
+
+            reset() {
                 this.cancelAutoRot();
                 this.stopAnimation();
-
                 this.playerAnimIdx = 0;
 
                 if (this.animNames.includes('idle')) {
@@ -463,37 +476,24 @@
             }
 
             _applyScreenRotation(dx, dy) {
-
                 const st = this.activeModel;
                 if (!st) return;
 
                 const obj = st.el.object3D;
 
-                // 只看左右滑动
-                const angle =
-                    THREE.MathUtils.degToRad(
-                        -dx * CONST.SWIPE_SENSITIVITY
-                    );
-
-                // 获取当前相机朝向
+                // 水平旋转 - 绕相机Y轴
+                const yAngle = THREE.MathUtils.degToRad(-dx * CONST.SWIPE_SENSITIVITY);
                 const camQuat = new THREE.Quaternion();
-
                 this.sceneEl.camera.getWorldQuaternion(camQuat);
+                const cameraUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat).normalize();
+                const qY = new THREE.Quaternion().setFromAxisAngle(cameraUp, yAngle);
+                obj.quaternion.premultiply(qY);
 
-                // 相机的上方向
-                const cameraUp = new THREE.Vector3(0, 1, 0)
-                    .applyQuaternion(camQuat)
-                    .normalize();
-
-                const q = new THREE.Quaternion();
-
-                q.setFromAxisAngle(
-                    cameraUp,
-                    angle
-                );
-
-                // 围绕镜头竖直方向旋转
-                obj.quaternion.premultiply(q);
+                // 垂直旋转 - 绕相机X轴
+                const xAngle = THREE.MathUtils.degToRad(-dy * CONST.SWIPE_SENSITIVITY);
+                const cameraRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat).normalize();
+                const qX = new THREE.Quaternion().setFromAxisAngle(cameraRight, xAngle);
+                obj.quaternion.premultiply(qX);
             }
 
             _onWheel(e) {
@@ -534,57 +534,32 @@
                 if (st.autoRotId) { st.cancelAutoRot(); btn.classList.remove('active'); return; }
                 btn.classList.add('active');
                 const rot = () => {
-
                     const obj = st.el.object3D;
-
-                    obj.rotateX(
-                        THREE.MathUtils.degToRad(CONST.AUTO_ROT_SPEED.x)
-                    );
-
-                    obj.rotateY(
-                        THREE.MathUtils.degToRad(CONST.AUTO_ROT_SPEED.y)
-                    );
-
-                    obj.rotateZ(
-                        THREE.MathUtils.degToRad(CONST.AUTO_ROT_SPEED.z)
-                    );
-
+                    obj.rotateX(THREE.MathUtils.degToRad(CONST.AUTO_ROT_SPEED.x));
+                    obj.rotateY(THREE.MathUtils.degToRad(CONST.AUTO_ROT_SPEED.y));
+                    obj.rotateZ(THREE.MathUtils.degToRad(CONST.AUTO_ROT_SPEED.z));
                     st.autoRotId = requestAnimationFrame(rot);
                 };
                 st.autoRotId = requestAnimationFrame(rot);
             }
             rotateAxis(axis, deg) {
-
                 const st = this.activeModel;
                 if (!st) return;
 
                 st.cancelAutoRot();
 
                 const obj = st.el.object3D;
-
                 const q = new THREE.Quaternion();
 
                 switch(axis) {
-
                     case 'x':
-                        q.setFromAxisAngle(
-                            new THREE.Vector3(1, 0, 0),
-                            THREE.MathUtils.degToRad(deg)
-                        );
+                        q.setFromAxisAngle(new THREE.Vector3(1, 0, 0), THREE.MathUtils.degToRad(deg));
                         break;
-
                     case 'y':
-                        q.setFromAxisAngle(
-                            new THREE.Vector3(0, 1, 0),
-                            THREE.MathUtils.degToRad(deg)
-                        );
+                        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), THREE.MathUtils.degToRad(deg));
                         break;
-
                     case 'z':
-                        q.setFromAxisAngle(
-                            new THREE.Vector3(0, 0, 1),
-                            THREE.MathUtils.degToRad(deg)
-                        );
+                        q.setFromAxisAngle(new THREE.Vector3(0, 0, 1), THREE.MathUtils.degToRad(deg));
                         break;
                 }
 
