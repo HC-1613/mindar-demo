@@ -192,7 +192,7 @@
 
     <!-- 底部统一工具栏 -->
     <div id="toolbar">
-        <!-- 旋转轴控制 -->
+        <!-- 第一行：旋转轴控制 -->
         <div id="toolbar-rot">
             <span class="axis-label">X</span>
             <button class="rot-btn" id="btn-rx-n" title="绕X轴负转">↺</button>
@@ -204,15 +204,13 @@
             <button class="rot-btn" id="btn-rz-n" title="绕Z轴负转">↺</button>
             <button class="rot-btn" id="btn-rz-p" title="绕Z轴正转">↻</button>
         </div>
-        <!-- 功能按钮 -->
+        <!-- 第二行：功能按钮 -->
         <div id="toolbar-func">
-            <button id="btn-spin" title="旋转弹跳">🔄</button>
             <button id="btn-scaleup" title="放大">➕</button>
             <button id="btn-scaledn" title="缩小">➖</button>
             <button id="btn-reset" title="重置">↺</button>
             <button id="btn-info" title="信息">ℹ️</button>
             <button id="btn-autorot" title="自动旋转">▶</button>
-            <button id="btn-wire" title="线框模式">🔲</button>
             <button id="btn-anim" title="播放动画">▶️</button>
         </div>
     </div>
@@ -594,38 +592,6 @@
             }
 
             // ========== 功能方法 ==========
-            spinBounce() {
-                const st = this.activeModel;
-                if (!st) return;
-                st.cancelAnim();
-                const startScale = st.scale;
-                const startRot = st.rotation;
-                const bounceAmp = startScale.y * CONST.SPIN_BOUNCE_AMP;
-                const startTime = performance.now();
-                vibrate(CONST.VIBRATE.SPIN_START);
-
-                const step = (now) => {
-                    const t = Math.min((now - startTime) / CONST.SPIN_DURATION, 1);
-                    const bounce = Math.sin(t * Math.PI * 2 * CONST.SPIN_BOUNCE_COUNT) * bounceAmp * (1 - t);
-                    st.setRotation(startRot.x + t * 360, startRot.y + t * 360, startRot.z);
-                    st.setScale(startScale.x + bounce, startScale.y + bounce, startScale.z + bounce);
-
-                    if (t < 1) {
-                        st.animId = requestAnimationFrame(step);
-                    } else {
-                        st.setScale(startScale.x, startScale.y, startScale.z);
-                        st.setRotation(
-                            normAngle(startRot.x + 360),
-                            normAngle(startRot.y + 360),
-                            startRot.z
-                        );
-                        st.animId = null;
-                        vibrate(CONST.VIBRATE.SPIN_END);
-                    }
-                };
-                st.animId = requestAnimationFrame(step);
-            }
-
             scaleStep(factor) {
                 const st = this.activeModel;
                 if (!st) return;
@@ -640,7 +606,6 @@
                 if (!st) return;
                 st.reset();
                 document.getElementById('btn-autorot').classList.remove('active');
-                document.getElementById('btn-wire').classList.remove('active');
                 vibrate(CONST.VIBRATE.RESET);
             }
 
@@ -687,15 +652,6 @@
                 vibrate(CONST.VIBRATE.CLICK);
             }
 
-            toggleWireframe() {
-                const st = this.activeModel;
-                if (!st) return;
-                st.toggleWireframe();
-                const btn = document.getElementById('btn-wire');
-                btn.classList.toggle('active', st.wireframe);
-                vibrate(CONST.VIBRATE.CLICK);
-            }
-
             playAnimation() {
                 const st = this.activeModel;
                 if (!st) return;
@@ -731,13 +687,11 @@
                 bind('btn-rz-p', () => this.rotateAxis('z', CONST.ROT_STEP));
 
                 // 功能按钮
-                bind('btn-spin', () => this.spinBounce());
                 bind('btn-scaleup', () => this.scaleStep(CONST.SCALE_UP));
                 bind('btn-scaledn', () => this.scaleStep(CONST.SCALE_DOWN));
                 bind('btn-reset', () => this.resetModel());
                 bind('btn-info', () => this.showInfo());
                 bind('btn-autorot', () => this.toggleAutoRot());
-                bind('btn-wire', () => this.toggleWireframe());
                 bind('btn-anim', () => this.playAnimation());
             }
         }
