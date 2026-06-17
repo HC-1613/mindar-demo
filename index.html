@@ -152,7 +152,7 @@
             SCALE_UP: 1.2,
             SCALE_DOWN: 0.8,
             WHEEL_FACTOR: 0.9,
-            SWIPE_SENSITIVITY: 0.4,  // 度/像素
+            SWIPE_SENSITIVITY: 0.5,
             AUTO_ROT_SPEED: { x: 0.3, y: 0.6, z: 0.2 },
             INFO_DURATION: 2000,
             TOAST_DURATION: 1800,
@@ -239,6 +239,7 @@
                 this.fallbackMixer = null;
                 this.fbTicking = false;
                 this._infoTimer = null;
+                this._actions = []; // 当前播放的动作列表
             }
             get scale() { const s = this.el.getAttribute('scale'); return { x: s.x, y: s.y, z: s.z }; }
             get rotation() { const r = this.el.getAttribute('rotation'); return { x: r.x, y: r.y, z: r.z }; }
@@ -251,21 +252,27 @@
             cancelAnim() { if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; } }
             cancelAutoRot() { if (this.autoRotId) { cancelAnimationFrame(this.autoRotId); this.autoRotId = null; } }
             cancelFallbackTicking() { this.fbTicking = false; }
+
             stopAnimation() {
-                // 停止动画并重置到第一帧
+                // 停止所有动画并停留在最后一帧
                 const mixComp = this.el.components['animation-mixer'];
                 if (mixComp && mixComp.mixer) {
                     mixComp.mixer.stopAllAction();
-                    mixComp.animations?.forEach(clip => {
-                        const act = mixComp.mixer.clipAction(clip);
-                        act.stop();
-                    });
+                    // 让所有动画停在最后一帧
+                    if (mixComp.animations) {
+                        mixComp.animations.forEach(clip => {
+                            const act = mixComp.mixer.clipAction(clip);
+                            act.stop();
+                            act.time = clip.duration; // 停在最后一帧
+                        });
+                    }
                 }
                 if (this.fallbackMixer) {
                     this.fallbackMixer.stopAllAction();
-                    this.fallbackMixer.setTime(0);
                 }
+                this._actions = [];
             }
+
             reset() {
                 this.cancelAnim();
                 this.cancelAutoRot();
@@ -273,23 +280,32 @@
                 this.setScale(this.origScale.x, this.origScale.y, this.origScale.z);
                 this.setRotation(this.origRot.x, this.origRot.y, this.origRot.z);
             }
+
             hasAnimation() {
                 const mixComp = this.el.components['animation-mixer'];
                 if (mixComp && mixComp.mixer && mixComp.animations?.length) return true;
                 const obj = this.el.getObject3D('mesh');
                 return !!(obj && obj.animations?.length);
             }
+
             playAnimation() {
+                // 方法1: animation-mixer 组件
                 const mixComp = this.el.components['animation-mixer'];
                 if (mixComp && mixComp.mixer && mixComp.animations?.length) {
                     mixComp.mixer.stopAllAction();
+                    this._actions = [];
                     mixComp.animations.forEach(clip => {
                         const act = mixComp.mixer.clipAction(clip);
                         act.reset();
+                        act.setLoop(THREE.LoopOnce); // 强制只播一次
+                        act.clampWhenFinished = true; // 停在最后一帧
                         act.play();
+                        this._actions.push(act);
                     });
                     return true;
                 }
+
+                // 方法2: fallback
                 const obj = this.el.getObject3D('mesh');
                 if (!obj?.animations?.length) return false;
                 if (!this.fallbackMixer) {
@@ -309,6 +325,8 @@
                 obj.animations.forEach(clip => {
                     const act = this.fallbackMixer.clipAction(clip);
                     act.reset();
+                    act.setLoop(THREE.LoopOnce);
+                    act.clampWhenFinished = true;
                     act.play();
                 });
                 return true;
@@ -323,8 +341,7 @@
                 this.statusEl = document.getElementById('status');
                 this.models = new Map();
                 this.activeIdx = -1;
-                // 手势状态
-                this.gesture = { mode: 'none', touches: 0, initDist: 0, initScale: null, lastX: 0, lastY: 0 };
+                this.gesture = { mode: 'none', initDist: 0, initScale: null, lastX: 0, lastY: 0 };
             }
             get activeModel() { return this.activeIdx >= 0 ? this.models.get(this.activeIdx) : null; }
 
@@ -396,7 +413,7 @@
                         st.cancelAutoRot();
                         const dx = e.touches[0].clientX - this.gesture.lastX;
                         const dy = e.touches[0].clientY - this.gesture.lastY;
-                        this._applySwipeRotation(dx, dy);
+                        this._applyScreenRotation(dx, dy);
                         this.gesture.lastX = e.touches[0].clientX;
                         this.gesture.lastY = e.touches[0].clientY;
                     } else if (this.gesture.mode === 'scale' && e.touches.length === 2 && this.gesture.initScale) {
@@ -417,25 +434,35 @@
                 return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
             }
 
-            _applySwipeRotation(dx, dy) {
+            // 在屏幕空间中旋转：左右滑=绕屏幕Y轴，上下滑=绕屏幕X轴
+            _applyScreenRotation(dx, dy) {
                 const st = this.activeModel;
                 if (!st) return;
                 const sensitivity = CONST.SWIPE_SENSITIVITY * (Math.PI / 180);
-                // 获取当前模型旋转四元数
+
+                // 获取模型当前的旋转四元数
                 const rot = st.rotation;
                 const quat = new THREE.Quaternion().setFromEuler(
                     new THREE.Euler(rot.x * Math.PI/180, rot.y * Math.PI/180, rot.z * Math.PI/180, 'YXZ')
                 );
-                // 获取相机本地轴
+
+                // 获取相机的本地轴方向（世界坐标中）
                 const cam = this.sceneEl.camera;
-                const right = new THREE.Vector3();
-                const up = new THREE.Vector3();
-                const forward = new THREE.Vector3();
-                cam.matrixWorld.extractBasis(right, up, forward);
-                // 左右滑动绕相机 up 轴，上下滑动绕相机 right 轴
-                const qUp = new THREE.Quaternion().setFromAxisAngle(up, -dx * sensitivity);
-                const qRight = new THREE.Quaternion().setFromAxisAngle(right, -dy * sensitivity);
-                quat.premultiply(qUp).premultiply(qRight);
+                const camQuat = new THREE.Quaternion();
+                cam.matrixWorld.decompose(new THREE.Vector3(), camQuat, new THREE.Vector3());
+
+                // 屏幕Y轴 = 相机本地Y轴向上，左右滑动绕此轴
+                const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat).normalize();
+                // 屏幕X轴 = 相机本地X轴向右，上下滑动绕此轴
+                const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat).normalize();
+
+                // 左右滑动：模型绕屏幕Y轴旋转（dx > 0 向右滑，模型绕Y轴正转）
+                const qY = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * sensitivity);
+                // 上下滑动：模型绕屏幕X轴旋转（dy > 0 向下滑，模型绕X轴正转）
+                const qX = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * sensitivity);
+
+                quat.premultiply(qY).premultiply(qX);
+
                 const newEuler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
                 st.setRotation(
                     newEuler.x * 180 / Math.PI,
