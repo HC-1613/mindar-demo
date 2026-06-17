@@ -47,22 +47,6 @@
             pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 100;
         }
         #info-label.visible { opacity: 1; }
-
-        /* ---- 调试面板 ---- */
-        #debug-panel {
-            position: fixed; top: 90px; left: 8px; right: 8px;
-            background: rgba(0,0,0,0.88); color: #0f0; font-family: monospace; font-size: 10px;
-            padding: 10px; border-radius: 10px; z-index: 200;
-            max-height: 55vh; overflow-y: auto; white-space: pre-wrap; word-break: break-all;
-            pointer-events: auto; display: none;
-        }
-        #debug-panel.show { display: block; }
-        #debug-close {
-            position: sticky; top: 0; float: right;
-            background: #333; color: #fff; border: none; padding: 4px 10px; border-radius: 8px;
-            font-size: 12px; cursor: pointer;
-        }
-
         #toast {
             position: fixed; bottom: 140px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.8); color: var(--color-text); padding: 8px 20px;
@@ -70,7 +54,6 @@
             pointer-events: none; opacity: 0; transition: opacity 0.3s; z-index: 110; white-space: nowrap;
         }
         #toast.visible { opacity: 1; }
-
         #anim-label {
             position: fixed; bottom: 130px; left: 50%; transform: translateX(-50%);
             color: #ff9800; font-family: system-ui, sans-serif; font-size: 12px; font-weight: bold;
@@ -111,22 +94,13 @@
         }
         #toolbar-func button:active { background: rgba(255,255,255,0.3); }
         #toolbar-func button.active { background: var(--bg-btn-active); border-color: #4caf50; }
-
-        /* debug 按钮 */
-        #btn-debug {
-            position: fixed; top: 8px; right: 8px; z-index: 210;
-            width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.5);
-            background: rgba(0,0,0,0.6); color: #0f0; font-size: 14px; cursor: pointer;
-        }
     </style>
 </head>
 
 <body>
-    <button id="btn-debug" title="调试动画">🐛</button>
     <div id="hint">☝ 单指旋转视角 / 双指缩放</div>
     <div id="status"></div>
     <div id="info-label"></div>
-    <div id="debug-panel"></div>
     <div id="anim-label"></div>
     <div id="toast"></div>
 
@@ -158,23 +132,25 @@
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
         <a-entity mindar-image-target="targetIndex: 0" smooth-ar>
-            <a-gltf-model id="model-0" data-info="图书馆模型" src="library.glb"
+            <a-gltf-model id="model-0" data-info="📚 图书馆模型" src="library.glb"
                 position="0 0 0" rotation="90 0 0" scale="0.005 0.005 0.005"></a-gltf-model>
         </a-entity>
         <a-entity mindar-image-target="targetIndex: 1" smooth-ar>
-            <a-gltf-model id="model-1" data-info="绿色头像" src="head-green.glb"
+            <a-gltf-model id="model-1" data-info="🗿 绿色头像" src="head-green.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
         <a-entity mindar-image-target="targetIndex: 2" smooth-ar>
-            <a-gltf-model id="model-2" data-info="盒子模型" src="box.glb"
+            <a-gltf-model id="model-2" data-info="📦 盒子模型" src="box.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
+        <!-- 模型3: player.glb 多动画 -->
         <a-entity mindar-image-target="targetIndex: 3" smooth-ar="posFactor: 0.2; rotFactor: 0.3; minDelta: 0.0003">
-            <a-gltf-model id="model-3" data-info="玩家模型" src="player.glb"
+            <a-gltf-model id="model-3" data-info="🎮 玩家模型" src="player.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
+        <!-- 模型4: dying.glb -->
         <a-entity mindar-image-target="targetIndex: 4" smooth-ar="posFactor: 0.2; rotFactor: 0.3; minDelta: 0.0003">
-            <a-gltf-model id="model-4" data-info="死亡模型" src="dying.glb"
+            <a-gltf-model id="model-4" data-info="💀 动画模型" src="dying.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
     </a-scene>
@@ -207,7 +183,6 @@
         let toastTimer;
         const toastEl = document.getElementById('toast');
         const animLabelEl = document.getElementById('anim-label');
-        const debugPanel = document.getElementById('debug-panel');
 
         const showToast = (msg) => {
             clearTimeout(toastTimer);
@@ -223,65 +198,6 @@
             animLabelEl.classList.add('visible');
             animLabelTimer = setTimeout(() => animLabelEl.classList.remove('visible'), CONST.ANIM_LABEL_DURATION);
         };
-
-        // ==================== 调试面板 ====================
-        window._debugLogs = [];
-
-        function debugLog(msg) {
-            console.log('[AR]', msg);
-            window._debugLogs.push(`[${new Date().toLocaleTimeString()}] ${msg}`);
-            if (window._debugLogs.length > 80) window._debugLogs.shift();
-            if (debugPanel.classList.contains('show')) {
-                debugPanel.textContent = window._debugLogs.join('\n');
-                // 再加个关闭按钮
-                const btn = document.createElement('button');
-                btn.id = 'debug-close';
-                btn.textContent = '✕ 关闭';
-                btn.onclick = () => debugPanel.classList.remove('show');
-                debugPanel.appendChild(btn);
-            }
-        }
-
-        function dumpModelAnimInfo(st) {
-            const info = [];
-            info.push(`=== 模型 ${st.index} 动画信息 ===`);
-            info.push(`动画总数: ${st.animations.length}`);
-            info.push(`动画名称: [${st.animNames.join(', ')}]`);
-            info.push(`是Player模型: ${st._isPlayerModel()}`);
-            info.push(`playerAnimIdx: ${st.playerAnimIdx}`);
-            info.push(`hasAnimation(): ${st.hasAnimation()}`);
-            info.push(`mixer存在: ${!!st.mixer}`);
-            info.push(`fbTicking: ${st.fbTicking}`);
-            if (st.animations.length > 0) {
-                info.push('--- 各动画详情 ---');
-                st.animations.forEach((c, i) => {
-                    info.push(`  [${i}] name="${c.name}" duration=${c.duration.toFixed(3)}s`);
-                });
-            }
-            info.forEach(l => debugLog(l));
-        }
-
-        document.getElementById('btn-debug').addEventListener('pointerdown', (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            const panel = debugPanel;
-            if (panel.classList.contains('show')) {
-                panel.classList.remove('show');
-            } else {
-                panel.textContent = window._debugLogs.join('\n');
-                panel.classList.add('show');
-                // 也 dump 当前活动模型
-                const st = window._arController?.activeModel;
-                if (st) dumpModelAnimInfo(st);
-                else debugLog('当前无活动模型');
-                panel.textContent = window._debugLogs.join('\n');
-                const btn = document.createElement('button');
-                btn.id = 'debug-close';
-                btn.textContent = '✕ 关闭';
-                btn.onclick = () => panel.classList.remove('show');
-                panel.appendChild(btn);
-            }
-        });
 
         // ---------- smooth-ar ----------
         AFRAME.registerComponent('smooth-ar', {
@@ -362,16 +278,10 @@
 
             initAnimation() {
                 const obj = this.el.getObject3D('mesh');
-                debugLog(`模型${this.index} initAnimation, mesh=${!!obj}, animations=${obj?.animations?.length || 0}`);
-                if (!obj || !obj.animations || !obj.animations.length) {
-                    debugLog(`模型${this.index} 无动画数据，跳过初始化`);
-                    return;
-                }
+                if (!obj || !obj.animations || !obj.animations.length) return;
                 this.mixer = new THREE.AnimationMixer(obj);
                 this.animations = obj.animations;
                 this.animNames = obj.animations.map(c => c.name);
-                debugLog(`模型${this.index} 动画名称: [${this.animNames.join(', ')}]`);
-                debugLog(`模型${this.index} 是Player: ${this._isPlayerModel()}`);
                 this.fbTicking = true;
                 let last = performance.now();
                 const tick = () => {
@@ -394,7 +304,6 @@
                 this.cancelAutoRot();
                 this.stopAnimation();
                 this.playerAnimIdx = 0;
-                // 如果有 idle 就播放 idle，否则停掉所有动画
                 if (this.animNames.includes('idle')) {
                     this._playClipByName('idle', true);
                 }
@@ -416,22 +325,16 @@
                     act.clampWhenFinished = true;
                     act.play();
                 });
-                debugLog(`模型${this.index} playAllAnimations: 播放全部${this.animations.length}个动画`);
                 return true;
             }
 
             _isPlayerModel() {
-                const required = CONST.PLAYER_ANIM_SEQUENCE;
-                const has = required.every(name => this.animNames.includes(name));
-                debugLog(`_isPlayerModel 检查: 需要${JSON.stringify(required)}, 实际${JSON.stringify(this.animNames)}, 结果=${has}`);
-                return has;
+                return CONST.PLAYER_ANIM_SEQUENCE.every(name => this.animNames.includes(name));
             }
 
             playAnimation() {
                 if (!this.mixer || !this.animations.length) return false;
-                const isPlayer = this._isPlayerModel();
-                debugLog(`模型${this.index} playAnimation, isPlayer=${isPlayer}, animNames=[${this.animNames.join(',')}]`);
-                if (isPlayer) {
+                if (this._isPlayerModel()) {
                     return this._playPlayerStep();
                 }
                 return this.playAllAnimations();
@@ -442,21 +345,17 @@
                 const idx = this.playerAnimIdx % seq.length;
                 const name = seq[idx];
                 const loop = CONST.PLAYER_LOOP_ANIMS.has(name);
-                debugLog(`_playPlayerStep: idx=${idx}, name=${name}, loop=${loop}`);
                 const success = this._playClipByName(name, loop);
                 if (success) {
                     showAnimLabel(`🎬 ${name}`);
                     this.playerAnimIdx++;
                     if (name === 'die') {
                         this._onDieFinished(() => {
-                            debugLog('die 播放完毕，自动切回 idle');
                             this._playClipByName('idle', true);
                             this.playerAnimIdx = 0;
                             showAnimLabel('🎬 idle');
                         });
                     }
-                } else {
-                    debugLog(`_playPlayerStep 失败: 找不到动画 "${name}"`);
                 }
                 return success;
             }
@@ -464,17 +363,13 @@
             _playClipByName(name, loop) {
                 if (!this.mixer) return false;
                 const clip = this.animations.find(c => c.name === name);
-                if (!clip) {
-                    debugLog(`找不到动画: "${name}", 可用: [${this.animNames.join(', ')}]`);
-                    return false;
-                }
+                if (!clip) return false;
                 this.mixer.stopAllAction();
                 const act = this.mixer.clipAction(clip);
                 act.reset();
                 act.setLoop(loop ? THREE.LoopRepeat : THREE.LoopOnce);
                 act.clampWhenFinished = !loop;
                 act.play();
-                debugLog(`播放 "${name}" loop=${loop} duration=${clip.duration.toFixed(3)}s`);
                 return true;
             }
 
@@ -516,10 +411,7 @@
                     if (!el) continue;
                     const st = new ModelState(i, el);
                     this.models.set(i, st);
-                    el.addEventListener('model-loaded', () => {
-                        debugLog(`模型${i} model-loaded 事件触发`);
-                        st.initAnimation();
-                    });
+                    el.addEventListener('model-loaded', () => st.initAnimation());
                 }
                 for (let i = 0; i < CONST.MODEL_COUNT; i++) {
                     const target = document.querySelector(`[mindar-image-target="targetIndex: ${i}"]`);
@@ -530,10 +422,6 @@
                         st.visible = true;
                         this.activeIdx = i;
                         this.statusEl.textContent = `📍 识别图 ${i+1} 已追踪`;
-                        debugLog(`targetFound: 模型${i}`);
-                        if (st.animations.length > 0) {
-                            dumpModelAnimInfo(st);
-                        }
                     });
                     target.addEventListener('targetLost', () => {
                         const st = this.models.get(i);
@@ -695,10 +583,8 @@
             playAnimation() {
                 const st = this.activeModel;
                 if (!st) return;
-                debugLog(`用户点击播放动画, 活动模型=${st.index}, hasAnimation=${st.hasAnimation()}, animNames=[${st.animNames.join(',')}]`);
                 if (!st.hasAnimation()) {
                     showToast('⚠ 该模型没有动画');
-                    debugLog('无动画，提示用户');
                     return;
                 }
                 if (st.playAnimation()) {
@@ -728,9 +614,7 @@
             }
         }
 
-        const controller = new ARController();
-        window._arController = controller;
-        controller.init();
+        new ARController().init();
     </script>
 </body>
 </html>
