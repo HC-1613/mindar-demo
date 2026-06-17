@@ -166,7 +166,6 @@
         };
 
         const vibrate = (p) => navigator.vibrate && navigator.vibrate(p);
-        const normAngle = (deg) => ((deg % 360) + 360) % 360;
 
         let toastTimer;
         const toastEl = document.getElementById('toast');
@@ -239,7 +238,6 @@
                 this.fallbackMixer = null;
                 this.fbTicking = false;
                 this._infoTimer = null;
-                this._actions = []; // 当前播放的动作列表
             }
             get scale() { const s = this.el.getAttribute('scale'); return { x: s.x, y: s.y, z: s.z }; }
             get rotation() { const r = this.el.getAttribute('rotation'); return { x: r.x, y: r.y, z: r.z }; }
@@ -254,23 +252,20 @@
             cancelFallbackTicking() { this.fbTicking = false; }
 
             stopAnimation() {
-                // 停止所有动画并停留在最后一帧
                 const mixComp = this.el.components['animation-mixer'];
                 if (mixComp && mixComp.mixer) {
                     mixComp.mixer.stopAllAction();
-                    // 让所有动画停在最后一帧
                     if (mixComp.animations) {
                         mixComp.animations.forEach(clip => {
                             const act = mixComp.mixer.clipAction(clip);
                             act.stop();
-                            act.time = clip.duration; // 停在最后一帧
+                            act.time = clip.duration;
                         });
                     }
                 }
                 if (this.fallbackMixer) {
                     this.fallbackMixer.stopAllAction();
                 }
-                this._actions = [];
             }
 
             reset() {
@@ -289,23 +284,18 @@
             }
 
             playAnimation() {
-                // 方法1: animation-mixer 组件
                 const mixComp = this.el.components['animation-mixer'];
                 if (mixComp && mixComp.mixer && mixComp.animations?.length) {
                     mixComp.mixer.stopAllAction();
-                    this._actions = [];
                     mixComp.animations.forEach(clip => {
                         const act = mixComp.mixer.clipAction(clip);
                         act.reset();
-                        act.setLoop(THREE.LoopOnce); // 强制只播一次
-                        act.clampWhenFinished = true; // 停在最后一帧
+                        act.setLoop(THREE.LoopOnce);
+                        act.clampWhenFinished = true;
                         act.play();
-                        this._actions.push(act);
                     });
                     return true;
                 }
-
-                // 方法2: fallback
                 const obj = this.el.getObject3D('mesh');
                 if (!obj?.animations?.length) return false;
                 if (!this.fallbackMixer) {
@@ -434,34 +424,30 @@
                 return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
             }
 
-            // 在屏幕空间中旋转：左右滑=绕屏幕Y轴，上下滑=绕屏幕X轴
+            // 左右滑=绕屏幕X轴（上下翻转），上下滑=绕屏幕Y轴（左右旋转）
             _applyScreenRotation(dx, dy) {
                 const st = this.activeModel;
                 if (!st) return;
                 const sensitivity = CONST.SWIPE_SENSITIVITY * (Math.PI / 180);
 
-                // 获取模型当前的旋转四元数
                 const rot = st.rotation;
                 const quat = new THREE.Quaternion().setFromEuler(
                     new THREE.Euler(rot.x * Math.PI/180, rot.y * Math.PI/180, rot.z * Math.PI/180, 'YXZ')
                 );
 
-                // 获取相机的本地轴方向（世界坐标中）
                 const cam = this.sceneEl.camera;
                 const camQuat = new THREE.Quaternion();
                 cam.matrixWorld.decompose(new THREE.Vector3(), camQuat, new THREE.Vector3());
 
-                // 屏幕Y轴 = 相机本地Y轴向上，左右滑动绕此轴
                 const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat).normalize();
-                // 屏幕X轴 = 相机本地X轴向右，上下滑动绕此轴
                 const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat).normalize();
 
-                // 左右滑动：模型绕屏幕Y轴旋转（dx > 0 向右滑，模型绕Y轴正转）
-                const qY = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * sensitivity);
-                // 上下滑动：模型绕屏幕X轴旋转（dy > 0 向下滑，模型绕X轴正转）
-                const qX = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * sensitivity);
+                // 左右滑(dx) → 绕屏幕X轴(screenRight)
+                const qX = new THREE.Quaternion().setFromAxisAngle(screenRight, -dx * sensitivity);
+                // 上下滑(dy) → 绕屏幕Y轴(screenUp)
+                const qY = new THREE.Quaternion().setFromAxisAngle(screenUp, -dy * sensitivity);
 
-                quat.premultiply(qY).premultiply(qX);
+                quat.premultiply(qX).premultiply(qY);
 
                 const newEuler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
                 st.setRotation(
