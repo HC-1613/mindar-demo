@@ -283,29 +283,27 @@
             }
 
             reset() {
+
                 this.cancelAutoRot();
                 this.stopAnimation();
+
                 this.playerAnimIdx = 0;
+
                 if (this.animNames.includes('idle')) {
                     this._playClipByName('idle', true);
                 }
-                this.setScale(this.origScale.x, this.origScale.y, this.origScale.z);
-                this.setRotation(this.origRot.x, this.origRot.y, this.origRot.z);
-            }
 
-            hasAnimation() { return this.animations.length > 0; }
+                this.setScale(
+                    this.origScale.x,
+                    this.origScale.y,
+                    this.origScale.z
+                );
 
-            playAllAnimations() {
-                if (!this.mixer || !this.animations.length) return false;
-                this.mixer.stopAllAction();
-                this.animations.forEach(clip => {
-                    const act = this.mixer.clipAction(clip);
-                    act.reset();
-                    act.setLoop(THREE.LoopOnce);
-                    act.clampWhenFinished = true;
-                    act.play();
-                });
-                return true;
+                this.el.object3D.rotation.set(
+                    THREE.MathUtils.degToRad(this.origRot.x),
+                    THREE.MathUtils.degToRad(this.origRot.y),
+                    THREE.MathUtils.degToRad(this.origRot.z)
+                );
             }
 
             _isPlayerModel() {
@@ -465,60 +463,37 @@
             }
 
             _applyScreenRotation(dx, dy) {
+
                 const st = this.activeModel;
                 if (!st) return;
-                
-                // 直接使用局部坐标系的轴进行旋转
-                const rot = st.rotation;
-                const sensitivity = CONST.SWIPE_SENSITIVITY * (Math.PI / 180) * 100;
-                
-                // 获取模型的世界矩阵
-                const obj3D = st.el.object3D;
-                const worldMatrix = obj3D.matrixWorld.clone();
-                
-                // 提取局部坐标轴在世界空间中的方向
-                const localX = new THREE.Vector3(1, 0, 0).applyMatrix4(worldMatrix).sub(
-                    new THREE.Vector3().setFromMatrixPosition(worldMatrix)
-                ).normalize();
-                const localY = new THREE.Vector3(0, 1, 0).applyMatrix4(worldMatrix).sub(
-                    new THREE.Vector3().setFromMatrixPosition(worldMatrix)
-                ).normalize();
-                const localZ = new THREE.Vector3(0, 0, 1).applyMatrix4(worldMatrix).sub(
-                    new THREE.Vector3().setFromMatrixPosition(worldMatrix)
-                ).normalize();
-                
-                // 获取相机的屏幕坐标轴
-                const cam = this.sceneEl.camera;
+
+                const obj = st.el.object3D;
+
+                // 只看左右滑动
+                const angle =
+                    THREE.MathUtils.degToRad(
+                        -dx * CONST.SWIPE_SENSITIVITY
+                    );
+
+                // 获取当前相机朝向
                 const camQuat = new THREE.Quaternion();
-                cam.matrixWorld.decompose(new THREE.Vector3(), camQuat, new THREE.Vector3());
-                
-                const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat).normalize();
-                const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat).normalize();
-                
-                // 将屏幕的水平和垂直移动分别映射到模型的局部坐标轴上
-                const rotX = new THREE.Quaternion();
-                const rotY = new THREE.Quaternion();
-                const rotZ = new THREE.Quaternion();
-                
-                // 水平移动映射到Y轴（最自然的旋转）
-                const yContribution = -dx * sensitivity * 0.01;
-                // 垂直移动映射到X轴
-                const xContribution = -dy * sensitivity * 0.01;
-                
-                rotY.setFromAxisAngle(localY, yContribution);
-                rotX.setFromAxisAngle(localX, xContribution);
-                
-                // 构建最终的旋转
-                const currentQuat = obj3D.quaternion.clone();
-                currentQuat.premultiply(rotY).premultiply(rotX);
-                
-                // 转换为欧拉角并设置
-                const newEuler = new THREE.Euler().setFromQuaternion(currentQuat, 'YXZ');
-                st.setRotation(
-                    newEuler.x * 180 / Math.PI,
-                    newEuler.y * 180 / Math.PI,
-                    newEuler.z * 180 / Math.PI
+
+                this.sceneEl.camera.getWorldQuaternion(camQuat);
+
+                // 相机的上方向
+                const cameraUp = new THREE.Vector3(0, 1, 0)
+                    .applyQuaternion(camQuat)
+                    .normalize();
+
+                const q = new THREE.Quaternion();
+
+                q.setFromAxisAngle(
+                    cameraUp,
+                    angle
                 );
+
+                // 围绕镜头竖直方向旋转
+                obj.quaternion.premultiply(q);
             }
 
             _onWheel(e) {
@@ -559,18 +534,63 @@
                 if (st.autoRotId) { st.cancelAutoRot(); btn.classList.remove('active'); return; }
                 btn.classList.add('active');
                 const rot = () => {
-                    const r = st.rotation;
-                    st.setRotation(r.x+CONST.AUTO_ROT_SPEED.x, r.y+CONST.AUTO_ROT_SPEED.y, r.z+CONST.AUTO_ROT_SPEED.z);
+
+                    const obj = st.el.object3D;
+
+                    obj.rotateX(
+                        THREE.MathUtils.degToRad(CONST.AUTO_ROT_SPEED.x)
+                    );
+
+                    obj.rotateY(
+                        THREE.MathUtils.degToRad(CONST.AUTO_ROT_SPEED.y)
+                    );
+
+                    obj.rotateZ(
+                        THREE.MathUtils.degToRad(CONST.AUTO_ROT_SPEED.z)
+                    );
+
                     st.autoRotId = requestAnimationFrame(rot);
                 };
                 st.autoRotId = requestAnimationFrame(rot);
             }
             rotateAxis(axis, deg) {
+
                 const st = this.activeModel;
                 if (!st) return;
-                const rot = { ...st.rotation };
-                rot[axis] += deg;
-                st.setRotation(rot.x, rot.y, rot.z);
+
+                st.cancelAutoRot();
+
+                const obj = st.el.object3D;
+
+                const q = new THREE.Quaternion();
+
+                switch(axis) {
+
+                    case 'x':
+                        q.setFromAxisAngle(
+                            new THREE.Vector3(1, 0, 0),
+                            THREE.MathUtils.degToRad(deg)
+                        );
+                        break;
+
+                    case 'y':
+                        q.setFromAxisAngle(
+                            new THREE.Vector3(0, 1, 0),
+                            THREE.MathUtils.degToRad(deg)
+                        );
+                        break;
+
+                    case 'z':
+                        q.setFromAxisAngle(
+                            new THREE.Vector3(0, 0, 1),
+                            THREE.MathUtils.degToRad(deg)
+                        );
+                        break;
+                }
+
+                // 绕模型自身坐标轴旋转
+                obj.quaternion.multiply(q);
+
                 vibrate(CONST.VIBRATE.CLICK);
             }
             playAnimation() {
