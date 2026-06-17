@@ -21,12 +21,9 @@
         }
 
         * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+            margin: 0; padding: 0; box-sizing: border-box;
             -webkit-tap-highlight-color: var(--tap-highlight);
-            user-select: none;
-            -webkit-user-select: none;
+            user-select: none; -webkit-user-select: none;
         }
 
         #hint {
@@ -132,32 +129,23 @@
         <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
 
         <a-entity mindar-image-target="targetIndex: 0" smooth-ar>
-            <a-gltf-model id="model-0" data-info="📚 图书馆模型" src="library.glb"
+            <a-gltf-model id="model-0" data-info="图书馆模型" src="library.glb"
                 position="0 0 0" rotation="90 0 0" scale="0.005 0.005 0.005"></a-gltf-model>
         </a-entity>
         <a-entity mindar-image-target="targetIndex: 1" smooth-ar>
-            <a-gltf-model id="model-1" data-info="🗿 绿色头像" src="head-green.glb"
+            <a-gltf-model id="model-1" data-info="单动画模型" src="dying.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
         <a-entity mindar-image-target="targetIndex: 2" smooth-ar>
-            <a-gltf-model id="model-2" data-info="📦 盒子模型" src="box.glb"
-                position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
-        </a-entity>
-        <!-- 模型3: player.glb 多动画 -->
-        <a-entity mindar-image-target="targetIndex: 3" smooth-ar="posFactor: 0.2; rotFactor: 0.3; minDelta: 0.0003">
-            <a-gltf-model id="model-3" data-info="🎮 玩家模型" src="player.glb"
-                position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
-        </a-entity>
-        <!-- 模型4: dying.glb -->
-        <a-entity mindar-image-target="targetIndex: 4" smooth-ar="posFactor: 0.2; rotFactor: 0.3; minDelta: 0.0003">
-            <a-gltf-model id="model-4" data-info="💀 动画模型" src="dying.glb"
+            <a-gltf-model id="model-2" data-info="多动画模型" src="player.glb"
                 position="0 0 0" scale="0.1 0.1 0.1"></a-gltf-model>
         </a-entity>
     </a-scene>
 
     <script>
         const CONST = {
-            MODEL_COUNT: 5,
+            MODEL_COUNT: 3,
+            MODEL_IDS: ['model-0', 'model-1', 'model-2'],
             ROT_STEP: 30,
             SCALE_UP: 1.2,
             SCALE_DOWN: 0.8,
@@ -171,10 +159,7 @@
             PLAYER_ANIM_SEQUENCE: ['idle', 'walk', 'run', 'die'],
             PLAYER_LOOP_ANIMS: new Set(['idle', 'walk', 'run']),
             VIBRATE: {
-                CLICK: 10,
-                ANIM_START: 20,
-                INFO: 25,
-                RESET: [10, 30, 10],
+                CLICK: 10, ANIM_START: 20, INFO: 25, RESET: [10, 30, 10],
             },
         };
 
@@ -256,7 +241,6 @@
                 this.origScale = { x: s.x, y: s.y, z: s.z };
                 this.origRot = { x: r.x, y: r.y, z: r.z };
                 this.visible = false;
-                this.animId = null;
                 this.autoRotId = null;
                 this._infoTimer = null;
                 this.mixer = null;
@@ -273,7 +257,6 @@
                     x: x ?? this.rotation.x, y: y ?? this.rotation.y, z: z ?? this.rotation.z
                 });
             }
-            cancelAnim() { if (this.animId) { cancelAnimationFrame(this.animId); this.animId = null; } }
             cancelAutoRot() { if (this.autoRotId) { cancelAnimationFrame(this.autoRotId); this.autoRotId = null; } }
 
             initAnimation() {
@@ -300,7 +283,6 @@
             }
 
             reset() {
-                this.cancelAnim();
                 this.cancelAutoRot();
                 this.stopAnimation();
                 this.playerAnimIdx = 0;
@@ -311,9 +293,7 @@
                 this.setRotation(this.origRot.x, this.origRot.y, this.origRot.z);
             }
 
-            hasAnimation() {
-                return this.animations.length > 0;
-            }
+            hasAnimation() { return this.animations.length > 0; }
 
             playAllAnimations() {
                 if (!this.mixer || !this.animations.length) return false;
@@ -334,9 +314,7 @@
 
             playAnimation() {
                 if (!this.mixer || !this.animations.length) return false;
-                if (this._isPlayerModel()) {
-                    return this._playPlayerStep();
-                }
+                if (this._isPlayerModel()) return this._playPlayerStep();
                 return this.playAllAnimations();
             }
 
@@ -347,13 +325,13 @@
                 const loop = CONST.PLAYER_LOOP_ANIMS.has(name);
                 const success = this._playClipByName(name, loop);
                 if (success) {
-                    showAnimLabel(`🎬 ${name}`);
+                    showAnimLabel(`${name}`);
                     this.playerAnimIdx++;
                     if (name === 'die') {
                         this._onDieFinished(() => {
                             this._playClipByName('idle', true);
                             this.playerAnimIdx = 0;
-                            showAnimLabel('🎬 idle');
+                            showAnimLabel('idle');
                         });
                     }
                 }
@@ -407,7 +385,7 @@
 
             _onSceneLoaded() {
                 for (let i = 0; i < CONST.MODEL_COUNT; i++) {
-                    const el = document.getElementById('model-' + i);
+                    const el = document.getElementById(CONST.MODEL_IDS[i]);
                     if (!el) continue;
                     const st = new ModelState(i, el);
                     this.models.set(i, st);
@@ -416,19 +394,19 @@
                 for (let i = 0; i < CONST.MODEL_COUNT; i++) {
                     const target = document.querySelector(`[mindar-image-target="targetIndex: ${i}"]`);
                     if (!target) continue;
+                    const idx = i;
                     target.addEventListener('targetFound', () => {
-                        const st = this.models.get(i);
+                        const st = this.models.get(idx);
                         if (!st) return;
                         st.visible = true;
-                        this.activeIdx = i;
-                        this.statusEl.textContent = `📍 识别图 ${i+1} 已追踪`;
+                        this.activeIdx = idx;
+                        this.statusEl.textContent = `识别图 ${idx+1} 已追踪`;
                     });
                     target.addEventListener('targetLost', () => {
-                        const st = this.models.get(i);
+                        const st = this.models.get(idx);
                         if (!st) return;
                         st.visible = false;
-                        st.cancelFallbackTicking?.();
-                        if (this.activeIdx === i) {
+                        if (this.activeIdx === idx) {
                             this.activeIdx = -1;
                             this.statusEl.textContent = '';
                             this.labelEl.classList.remove('visible');
@@ -453,10 +431,7 @@
                         this.gesture.mode = 'scale';
                         this.gesture.initDist = this._getDist(e);
                         const st = this.activeModel;
-                        if (st) {
-                            st.cancelAnim();
-                            this.gesture.initScale = st.scale;
-                        }
+                        if (st) { this.gesture.initScale = st.scale; }
                     } else {
                         this.gesture.mode = 'none';
                     }
@@ -467,7 +442,6 @@
                     if (!this.activeModel) return;
                     const st = this.activeModel;
                     if (this.gesture.mode === 'rotate' && e.touches.length === 1) {
-                        st.cancelAnim();
                         st.cancelAutoRot();
                         const dx = e.touches[0].clientX - this.gesture.lastX;
                         const dy = e.touches[0].clientY - this.gesture.lastY;
@@ -481,9 +455,7 @@
                     }
                 }, { passive: false });
 
-                c.addEventListener('touchend', (e) => {
-                    if (e.touches.length < 2) this.gesture.mode = 'none';
-                });
+                c.addEventListener('touchend', (e) => { if (e.touches.length < 2) this.gesture.mode = 'none'; });
                 c.addEventListener('touchcancel', () => { this.gesture.mode = 'none'; });
             }
 
@@ -498,39 +470,33 @@
                 const sensitivity = CONST.SWIPE_SENSITIVITY * (Math.PI / 180);
                 const rot = st.rotation;
                 const quat = new THREE.Quaternion().setFromEuler(
-                    new THREE.Euler(rot.x * Math.PI/180, rot.y * Math.PI/180, rot.z * Math.PI/180, 'YXZ')
+                    new THREE.Euler(rot.x*Math.PI/180, rot.y*Math.PI/180, rot.z*Math.PI/180, 'YXZ')
                 );
                 const cam = this.sceneEl.camera;
                 const camQuat = new THREE.Quaternion();
                 cam.matrixWorld.decompose(new THREE.Vector3(), camQuat, new THREE.Vector3());
-                const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camQuat).normalize();
-                const screenRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQuat).normalize();
-                const qY = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx * sensitivity);
-                const qX = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy * sensitivity);
+                const screenUp = new THREE.Vector3(0,1,0).applyQuaternion(camQuat).normalize();
+                const screenRight = new THREE.Vector3(1,0,0).applyQuaternion(camQuat).normalize();
+                const qY = new THREE.Quaternion().setFromAxisAngle(screenUp, -dx*sensitivity);
+                const qX = new THREE.Quaternion().setFromAxisAngle(screenRight, -dy*sensitivity);
                 quat.premultiply(qY).premultiply(qX);
                 const newEuler = new THREE.Euler().setFromQuaternion(quat, 'YXZ');
-                st.setRotation(
-                    newEuler.x * 180 / Math.PI,
-                    newEuler.y * 180 / Math.PI,
-                    newEuler.z * 180 / Math.PI
-                );
+                st.setRotation(newEuler.x*180/Math.PI, newEuler.y*180/Math.PI, newEuler.z*180/Math.PI);
             }
 
             _onWheel(e) {
                 if (!this.activeModel) return;
                 e.preventDefault();
-                this.activeModel.cancelAnim();
                 const s = this.activeModel.scale;
-                const f = e.deltaY > 0 ? CONST.WHEEL_FACTOR : 1 / CONST.WHEEL_FACTOR;
-                this.activeModel.setScale(s.x * f, s.y * f, s.z * f);
+                const f = e.deltaY > 0 ? CONST.WHEEL_FACTOR : 1/CONST.WHEEL_FACTOR;
+                this.activeModel.setScale(s.x*f, s.y*f, s.z*f);
             }
 
             scaleStep(factor) {
                 const st = this.activeModel;
                 if (!st) return;
-                st.cancelAnim();
                 const s = st.scale;
-                st.setScale(s.x * factor, s.y * factor, s.z * factor);
+                st.setScale(s.x*factor, s.y*factor, s.z*factor);
                 vibrate(CONST.VIBRATE.CLICK);
             }
             resetModel() {
@@ -553,20 +519,11 @@
                 const st = this.activeModel;
                 if (!st) return;
                 const btn = document.getElementById('btn-autorot');
-                if (st.autoRotId) {
-                    st.cancelAutoRot();
-                    btn.classList.remove('active');
-                    return;
-                }
+                if (st.autoRotId) { st.cancelAutoRot(); btn.classList.remove('active'); return; }
                 btn.classList.add('active');
-                st.cancelAnim();
                 const rot = () => {
                     const r = st.rotation;
-                    st.setRotation(
-                        r.x + CONST.AUTO_ROT_SPEED.x,
-                        r.y + CONST.AUTO_ROT_SPEED.y,
-                        r.z + CONST.AUTO_ROT_SPEED.z
-                    );
+                    st.setRotation(r.x+CONST.AUTO_ROT_SPEED.x, r.y+CONST.AUTO_ROT_SPEED.y, r.z+CONST.AUTO_ROT_SPEED.z);
                     st.autoRotId = requestAnimationFrame(rot);
                 };
                 st.autoRotId = requestAnimationFrame(rot);
@@ -574,7 +531,6 @@
             rotateAxis(axis, deg) {
                 const st = this.activeModel;
                 if (!st) return;
-                st.cancelAnim();
                 const rot = { ...st.rotation };
                 rot[axis] += deg;
                 st.setRotation(rot.x, rot.y, rot.z);
@@ -583,15 +539,9 @@
             playAnimation() {
                 const st = this.activeModel;
                 if (!st) return;
-                if (!st.hasAnimation()) {
-                    showToast('⚠ 该模型没有动画');
-                    return;
-                }
-                if (st.playAnimation()) {
-                    vibrate(CONST.VIBRATE.ANIM_START);
-                } else {
-                    showToast('⚠ 该模型没有动画');
-                }
+                if (!st.hasAnimation()) { showToast('⚠ 该模型没有动画'); return; }
+                if (st.playAnimation()) { vibrate(CONST.VIBRATE.ANIM_START); }
+                else { showToast('⚠ 该模型没有动画'); }
             }
 
             _bindButtons() {
